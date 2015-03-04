@@ -1,4 +1,4 @@
-<?
+<?php
 
 $end = array(0);
 $lst = array(1, 10, array(1, 10, (array(1, 22, $end))));
