@@ -46,11 +46,15 @@ that is...).  Despite PHP's lack of support for algebraic data types, pattern
 matching, closures, lazines, etc, Idris translates to an intermediate
 representation that compiles all of these things away.
 
-I've found a thing or two that wasn't an nice as it should have been, but it
-still comes in at under 200 lines for getting a basic thing up and running
-(only a couple of primitives and basic operators implemented but the main work
-of compiling tricky program structures is done) which means that it shouldn't be
-much harder to write a back end for a target you'd actually want to run things on!
+I've found a thing or two that wasn't as nice as it should have been, which I
+will fix so that it will be an easier job for anyone writing a back end for any
+future platform which I haven't thought of, or maybe hasn't been invented yet.
+
+Nevertheless, it still comes in at under 200 lines for getting a basic thing up
+and running (only a couple of primitives and basic operators implemented but
+the main work of compiling tricky program structures is done) which means that
+it shouldn't be much harder to write a back end for a target you'd actually
+want to run things on!
 
 
 
