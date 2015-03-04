@@ -10,10 +10,10 @@ import Data.Char
 codegenPHP :: CodeGenerator
 codegenPHP ci = do let out = concatMap (doCodegen (getTags (defunDecls ci))) 
                                        (defunDecls ci)
-                   writeFile (outputFile ci) ("<?\n" ++ helpers ++ "\n" ++
+                   writeFile (outputFile ci) ("<?php\n" ++ helpers ++ "\n" ++
                                                         out ++ "\n" ++ 
                                                         start ++ "\n" ++ 
-                                              "\n?>\n")
+                                              "\n\n")
 
 start = phpname (sMN 0 "runMain") ++ "();"
 
