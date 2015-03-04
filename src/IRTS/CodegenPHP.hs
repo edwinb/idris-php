@@ -2,6 +2,7 @@ module IRTS.CodegenPHP(codegenPHP) where
 
 import IRTS.CodegenCommon
 import IRTS.Defunctionalise
+import IRTS.Simplified
 import Idris.Core.TT
 
 import Data.Maybe
@@ -9,7 +10,7 @@ import Data.Char
 
 codegenPHP :: CodeGenerator
 codegenPHP ci = do let out = concatMap (doCodegen (getTags (defunDecls ci))) 
-                                       (defunDecls ci)
+                                       (simpleDecls ci)
                    writeFile (outputFile ci) ("<?php\n" ++ helpers ++ "\n" ++
                                                         out ++ "\n" ++ 
                                                         start ++ "\n" ++ 
@@ -35,85 +36,81 @@ phpname n = "idris_" ++ concatMap phpchar (showCG n)
 var :: Name -> String
 var n = "$" ++ phpname n
 
+loc :: Int -> String
+loc i = "$loc" ++ show i
+
 getTags :: [(Name, DDecl)] -> [(Name, Int)]
 getTags = mapMaybe getTag
   where
     getTag (n, DConstructor _ t _) = Just (n, t)
     getTag _ = Nothing
 
-doCodegen :: [(Name, Int)] -> (Name, DDecl) -> String
-doCodegen tags (n, DConstructor _ _ _) = ""
-doCodegen tags (n, DFun _ args def) = cgFun tags n args def
+doCodegen :: [(Name, Int)] -> (Name, SDecl) -> String
+doCodegen tags (n, SFun _ args i def) = cgFun tags n args def
 
-cgFun :: [(Name, Int)] -> Name -> [Name] -> DExp -> String
+cgFun :: [(Name, Int)] -> Name -> [Name] -> SExp -> String
 cgFun tags n args def 
     = "function " ++ phpname n ++ "("
-                  ++ showSep "," (map var args) ++ ") {\n"
-                  ++ cgLets tags args (liftLets def) ++ "\n}\n\n"
+                  ++ showSep "," (map (loc . fst) (zip [0..] args)) ++ ") {\n"
+                  ++ cgBody doRet tags def ++ "\n}\n\n"
 
-liftLets :: DExp -> ([(Name, DExp)], DExp)
-liftLets exp = ([], exp) -- TMP
-
-cgLets :: [(Name, Int)] -> [Name] -> ([(Name, DExp)], DExp) -> String
-cgLets tags args ([], end) = cgBody True tags args end
-cgLets tags args (((n, b) : ns), end) 
-    = var n ++ " = " ++ cgBody False tags args b ++ ";\n"
-                     ++ cgLets tags args (ns, end)
-
-cgBody :: Bool -> [(Name, Int)] -> [Name] -> DExp -> String
-cgBody ret tags env (DV (Glob n)) | n `elem` env = doRet ret $ var n
-                                  | otherwise = doRet ret $ phpname n ++ "()"
-cgBody ret tags env (DV (Loc i)) = doRet ret $ var (env!!i)
-cgBody ret tags env (DApp _ f args)
+cgBody :: (String -> String) -> [(Name, Int)] -> SExp -> String
+cgBody ret tags (SV (Glob n)) = ret $ phpname n ++ "()"
+cgBody ret tags (SV (Loc i)) = ret $ loc i 
+cgBody ret tags (SApp _ f args)
    = case lookup f tags of
-          Just i -> cgBody ret tags env (DC Nothing i f args)
-          _ -> doRet ret $ phpname f ++ "(" ++ 
-                           showSep "," (map (cgBody False tags env) args) ++ ")"
-cgBody True tags env (DLet n v sc)
-   = var n ++ " = " ++ cgBody False tags env v ++ ";\n" ++
-     cgBody True tags (env ++ [n]) sc
-cgBody ret tags env (DUpdate n e)
-   = cgBody True tags env e
-cgBody ret tags env (DProj e i)
-   = doRet ret $ cgBody False tags env e ++ "[" ++ show (i + 1) ++ "]"
-cgBody ret tags env (DC _ t n args)
-   = doRet ret $ "array(" ++ showSep "," 
-                    (show t : (map (cgBody False tags env) args)) ++ ")"
-cgBody ret tags env (DCase _ e alts)
-   = let scrvar = cgBody False tags env e 
+          Just i -> cgBody ret tags (SCon Nothing i f args)
+          _ -> ret $ phpname f ++ "(" ++ 
+                     showSep "," (map cgVar args) ++ ")"
+cgBody ret tags (SLet (Loc i) v sc)
+   = cgBody (\x -> loc i ++ " = " ++ x ++ ";\n") tags v ++
+     cgBody ret tags sc
+cgBody ret tags (SUpdate n e)
+   = cgBody ret tags e
+cgBody ret tags (SProj e i)
+   = ret $ cgVar e ++ "[" ++ show (i + 1) ++ "]"
+cgBody ret tags (SCon _ t n args)
+   = ret $ "array(" ++ showSep "," 
+              (show t : (map cgVar args)) ++ ")"
+cgBody ret tags (SCase _ e alts)
+   = let scrvar = cgVar e 
          scr = if any conCase alts then scrvar ++ "[0]" else scrvar in
        "switch(" ++ scr ++ ") {\n"
-         ++ showSep "\nbreak;\n" (map (cgAlt tags env scrvar) alts) ++ "\n}"
-  where conCase (DConCase _ _ _ _) = True
+         ++ showSep "\nbreak;\n" (map (cgAlt ret tags scrvar) alts) ++ "\n}"
+  where conCase (SConCase _ _ _ _ _) = True
         conCase _ = False
-cgBody ret tags env (DChkCase e alts)
-   = let scr = cgBody False tags env e in
-     "switch(" ++ cgBody False tags env e ++ "[0]) {\n"
-       ++ showSep "\nbreak;\n" (map (cgAlt tags env scr) alts) ++ "\n}"
-cgBody ret tags env (DConst c)
-   = doRet ret $ cgConst c
-cgBody ret tags env (DOp op args) = doRet ret $ cgOp tags env op 
-                                       (map (cgBody False tags env) args)
-cgBody ret tags env DNothing = doRet ret "0"
-cgBody ret tags env (DError x) = doRet ret $ "error( " ++ x ++ ")"
-cgBody ret _ _ _ = doRet ret $ "error(\"NOT IMPLEMENTED!!!!\")"
+cgBody ret tags (SChkCase e alts)
+   = let scrvar = cgVar e 
+         scr = if any conCase alts then scrvar ++ "[0]" else scrvar in
+       "switch(" ++ scr ++ ") {\n"
+         ++ showSep "\nbreak;\n" (map (cgAlt ret tags scrvar) alts) ++ "\n}"
+  where conCase (SConCase _ _ _ _ _) = True
+        conCase _ = False
+cgBody ret tags (SConst c) = ret $ cgConst c
+cgBody ret tags (SOp op args) = ret $ cgOp op (map cgVar args)
+cgBody ret tags SNothing = ret "0"
+cgBody ret tags (SError x) = ret $ "error( " ++ x ++ ")"
+cgBody ret _ _ = ret $ "error(\"NOT IMPLEMENTED!!!!\")"
 
-doRet :: Bool -> String -> String
-doRet False str = str
-doRet True str = "return " ++ str ++ ";"
+doRet :: String -> String
+doRet str = "return " ++ str ++ ";"
 
-cgAlt :: [(Name, Int)] -> [Name] -> String -> DAlt -> String
-cgAlt tags env scr (DConstCase t exp)
-   = "case " ++ show t ++ ":\n" ++ cgBody True tags env exp
-cgAlt tags env scr (DConCase t n args exp)
+cgAlt :: (String -> String) -> [(Name, Int)] -> String -> SAlt -> String
+cgAlt ret tags scr (SConstCase t exp)
+   = "case " ++ show t ++ ":\n" ++ cgBody ret tags exp
+cgAlt ret tags scr (SDefaultCase exp) = "default:\n" ++ cgBody ret tags exp
+cgAlt ret tags scr (SConCase lv t n args exp)
    = case lookup n tags of
           Just i -> "case " ++ show i ++ ":\n"
-                        ++ project 1 args ++ "\n" ++ cgBody True tags (env ++ args) exp
+                  ++ project 1 lv args ++ "\n" ++ cgBody ret tags exp
           _ -> error "Can't happen"
-   where project i [] = ""
-         project i (n : ns) = var n ++ " = " ++ scr ++ "[" ++ show i ++ "]; "
-                                  ++ project (i + 1) ns
-cgAlt tags env scr (DDefaultCase exp) = "default:\n" ++ cgBody True tags env exp
+   where project i v [] = ""
+         project i v (n : ns) = loc v ++ " = " ++ scr ++ "[" ++ show i ++ "]; "
+                                  ++ project (i + 1) (v + 1) ns
+
+cgVar :: LVar -> String
+cgVar (Loc i) = loc i 
+cgVar (Glob n) = var n
 
 cgConst :: Const -> String
 cgConst (I i) = show i
@@ -123,29 +120,29 @@ cgConst TheWorld = "0"
 cgConst x | isTypeConst x = "0"
 cgConst x = error $ "Constant " ++ show x ++ " not compilable yet"
 
-cgOp :: [(Name, Int)] -> [Name] -> PrimFn -> [String] -> String
-cgOp tags env (LPlus (ATInt _)) [l, r] 
+cgOp :: PrimFn -> [String] -> String
+cgOp (LPlus (ATInt _)) [l, r] 
      = "(" ++ l ++ " + " ++ r ++ ")"
-cgOp tags env (LMinus (ATInt _)) [l, r] 
+cgOp (LMinus (ATInt _)) [l, r] 
      = "(" ++ l ++ " - " ++ r ++ ")"
-cgOp tags env (LTimes (ATInt _)) [l, r] 
+cgOp (LTimes (ATInt _)) [l, r] 
      = "(" ++ l ++ " * " ++ r ++ ")"
-cgOp tags env (LEq (ATInt _)) [l, r] 
+cgOp (LEq (ATInt _)) [l, r] 
      = "(" ++ l ++ " == " ++ r ++ ")"
-cgOp tags env (LSLt (ATInt _)) [l, r] 
+cgOp (LSLt (ATInt _)) [l, r] 
      = "(" ++ l ++ " < " ++ r ++ ")"
-cgOp tags env (LSLe (ATInt _)) [l, r] 
+cgOp (LSLe (ATInt _)) [l, r] 
      = "(" ++ l ++ " <= " ++ r ++ ")"
-cgOp tags env (LSGt (ATInt _)) [l, r] 
+cgOp (LSGt (ATInt _)) [l, r] 
      = "(" ++ l ++ " > " ++ r ++ ")"
-cgOp tags env (LSGe (ATInt _)) [l, r] 
+cgOp (LSGe (ATInt _)) [l, r] 
      = "(" ++ l ++ " >= " ++ r ++ ")"
-cgOp tags env (LIntStr _) [x] = x
-cgOp tags env (LSExt _ _) [x] = x
-cgOp tags env (LTrunc _ _) [x] = x
-cgOp tags env LWriteStr [_,str] = "idris_writeStr(" ++ str ++ ")"
-cgOp tags env LStrConcat [l,r] = "idris_append(" ++ l ++ ", " ++ r ++ ")"
-cgOp tags env op exps = "error(\"OPERATOR " ++ show op ++ " NOT IMPLEMENTED!!!!\")"
+cgOp (LIntStr _) [x] = x
+cgOp (LSExt _ _) [x] = x
+cgOp (LTrunc _ _) [x] = x
+cgOp LWriteStr [_,str] = "idris_writeStr(" ++ str ++ ")"
+cgOp LStrConcat [l,r] = "idris_append(" ++ l ++ ", " ++ r ++ ")"
+cgOp op exps = "error(\"OPERATOR " ++ show op ++ " NOT IMPLEMENTED!!!!\")"
    -- error("Operator " ++ show op ++ " not implemented")
 
 

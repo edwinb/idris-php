@@ -43,7 +43,7 @@ representation to target another platform, PHP. Many hosting providers, for
 example, still support PHP but don't necessarily allow you to write in anything
 nicer (maybe they'll let you write Node.js, but it's debatable how much nicer
 that is...).  Despite PHP's lack of support for algebraic data types, pattern
-matching, closures, lazines, etc, Idris translates to an intermediate
+matching, closures, laziness, etc, Idris translates to an intermediate
 representation that compiles all of these things away.
 
 I've found a thing or two that wasn't as nice as it should have been, which I
