@@ -1,7 +1,7 @@
 module IRTS.CodegenPHP(codegenPHP) where
 
 import IRTS.CodegenCommon
-import IRTS.Defunctionalise
+import IRTS.Lang
 import IRTS.Simplified
 import Idris.Core.TT
 
@@ -9,8 +9,7 @@ import Data.Maybe
 import Data.Char
 
 codegenPHP :: CodeGenerator
-codegenPHP ci = do let out = concatMap (doCodegen (getTags (defunDecls ci))) 
-                                       (simpleDecls ci)
+codegenPHP ci = do let out = concatMap doCodegen (simpleDecls ci)
                    writeFile (outputFile ci) ("<?php\n" ++ helpers ++ "\n" ++
                                                         out ++ "\n" ++ 
                                                         start ++ "\n" ++ 
@@ -39,71 +38,60 @@ var n = "$" ++ phpname n
 loc :: Int -> String
 loc i = "$loc" ++ show i
 
-getTags :: [(Name, DDecl)] -> [(Name, Int)]
-getTags = mapMaybe getTag
-  where
-    getTag (n, DConstructor _ t _) = Just (n, t)
-    getTag _ = Nothing
+doCodegen :: (Name, SDecl) -> String
+doCodegen (n, SFun _ args i def) = cgFun n args def
 
-doCodegen :: [(Name, Int)] -> (Name, SDecl) -> String
-doCodegen tags (n, SFun _ args i def) = cgFun tags n args def
-
-cgFun :: [(Name, Int)] -> Name -> [Name] -> SExp -> String
-cgFun tags n args def 
+cgFun :: Name -> [Name] -> SExp -> String
+cgFun n args def 
     = "function " ++ phpname n ++ "("
                   ++ showSep "," (map (loc . fst) (zip [0..] args)) ++ ") {\n"
-                  ++ cgBody doRet tags def ++ "\n}\n\n"
+                  ++ cgBody doRet def ++ "\n}\n\n"
 
-cgBody :: (String -> String) -> [(Name, Int)] -> SExp -> String
-cgBody ret tags (SV (Glob n)) = ret $ phpname n ++ "()"
-cgBody ret tags (SV (Loc i)) = ret $ loc i 
-cgBody ret tags (SApp _ f args)
-   = case lookup f tags of
-          Just i -> cgBody ret tags (SCon Nothing i f args)
-          _ -> ret $ phpname f ++ "(" ++ 
-                     showSep "," (map cgVar args) ++ ")"
-cgBody ret tags (SLet (Loc i) v sc)
-   = cgBody (\x -> loc i ++ " = " ++ x ++ ";\n") tags v ++
-     cgBody ret tags sc
-cgBody ret tags (SUpdate n e)
-   = cgBody ret tags e
-cgBody ret tags (SProj e i)
+cgBody :: (String -> String) -> SExp -> String
+cgBody ret (SV (Glob n)) = ret $ phpname n ++ "()"
+cgBody ret (SV (Loc i)) = ret $ loc i 
+cgBody ret (SApp _ f args) = ret $ phpname f ++ "(" ++ 
+                                   showSep "," (map cgVar args) ++ ")"
+cgBody ret (SLet (Loc i) v sc)
+   = cgBody (\x -> loc i ++ " = " ++ x ++ ";\n") v ++
+     cgBody ret sc
+cgBody ret (SUpdate n e)
+   = cgBody ret e
+cgBody ret (SProj e i)
    = ret $ cgVar e ++ "[" ++ show (i + 1) ++ "]"
-cgBody ret tags (SCon _ t n args)
+cgBody ret (SCon _ t n args)
    = ret $ "array(" ++ showSep "," 
               (show t : (map cgVar args)) ++ ")"
-cgBody ret tags (SCase _ e alts)
+cgBody ret (SCase _ e alts)
    = let scrvar = cgVar e 
          scr = if any conCase alts then scrvar ++ "[0]" else scrvar in
        "switch(" ++ scr ++ ") {\n"
-         ++ showSep "\nbreak;\n" (map (cgAlt ret tags scrvar) alts) ++ "\n}"
+         ++ showSep "\nbreak;\n" (map (cgAlt ret scrvar) alts) ++ "\n}"
   where conCase (SConCase _ _ _ _ _) = True
         conCase _ = False
-cgBody ret tags (SChkCase e alts)
+cgBody ret (SChkCase e alts)
    = let scrvar = cgVar e 
          scr = if any conCase alts then scrvar ++ "[0]" else scrvar in
        "switch(" ++ scr ++ ") {\n"
-         ++ showSep "\nbreak;\n" (map (cgAlt ret tags scrvar) alts) ++ "\n}"
+         ++ showSep "\nbreak;\n" (map (cgAlt ret scrvar) alts) ++ "\n}"
   where conCase (SConCase _ _ _ _ _) = True
         conCase _ = False
-cgBody ret tags (SConst c) = ret $ cgConst c
-cgBody ret tags (SOp op args) = ret $ cgOp op (map cgVar args)
-cgBody ret tags SNothing = ret "0"
-cgBody ret tags (SError x) = ret $ "error( " ++ x ++ ")"
-cgBody ret _ _ = ret $ "error(\"NOT IMPLEMENTED!!!!\")"
+cgBody ret (SConst c) = ret $ cgConst c
+cgBody ret (SOp op args) = ret $ cgOp op (map cgVar args)
+cgBody ret SNothing = ret "0"
+cgBody ret (SError x) = ret $ "error( " ++ x ++ ")"
+cgBody ret _ = ret $ "error(\"NOT IMPLEMENTED!!!!\")"
 
 doRet :: String -> String
 doRet str = "return " ++ str ++ ";"
 
-cgAlt :: (String -> String) -> [(Name, Int)] -> String -> SAlt -> String
-cgAlt ret tags scr (SConstCase t exp)
-   = "case " ++ show t ++ ":\n" ++ cgBody ret tags exp
-cgAlt ret tags scr (SDefaultCase exp) = "default:\n" ++ cgBody ret tags exp
-cgAlt ret tags scr (SConCase lv t n args exp)
-   = case lookup n tags of
-          Just i -> "case " ++ show i ++ ":\n"
-                  ++ project 1 lv args ++ "\n" ++ cgBody ret tags exp
-          _ -> error "Can't happen"
+cgAlt :: (String -> String) -> String -> SAlt -> String
+cgAlt ret scr (SConstCase t exp)
+   = "case " ++ show t ++ ":\n" ++ cgBody ret exp
+cgAlt ret scr (SDefaultCase exp) = "default:\n" ++ cgBody ret exp
+cgAlt ret scr (SConCase lv t n args exp)
+   = "case " ++ show t ++ ":\n"
+             ++ project 1 lv args ++ "\n" ++ cgBody ret exp
    where project i v [] = ""
          project i v (n : ns) = loc v ++ " = " ++ scr ++ "[" ++ show i ++ "]; "
                                   ++ project (i + 1) (v + 1) ns
