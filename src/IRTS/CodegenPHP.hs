@@ -46,6 +46,15 @@ cgFun n args def
     = "function " ++ phpname n ++ "("
                   ++ showSep "," (map (loc . fst) (zip [0..] args)) ++ ") {\n"
                   ++ cgBody doRet def ++ "\n}\n\n"
+  where doRet :: String -> String -- Return the calculated expression
+        doRet str = "return " ++ str ++ ";"
+
+-- cgBody converts the SExp into a chunk of php which calculates the result
+-- of an expression, then runs the function on the resulting bit of code.
+--
+-- We do it this way because we might calculate an expression in a deeply nested
+-- case statement, or inside a let, etc, so the assignment/return of the calculated
+-- expression itself may happen quite deeply.
 
 cgBody :: (String -> String) -> SExp -> String
 cgBody ret (SV (Glob n)) = ret $ phpname n ++ "()"
@@ -81,9 +90,6 @@ cgBody ret (SOp op args) = ret $ cgOp op (map cgVar args)
 cgBody ret SNothing = ret "0"
 cgBody ret (SError x) = ret $ "error( " ++ x ++ ")"
 cgBody ret _ = ret $ "error(\"NOT IMPLEMENTED!!!!\")"
-
-doRet :: String -> String
-doRet str = "return " ++ str ++ ";"
 
 cgAlt :: (String -> String) -> String -> SAlt -> String
 cgAlt ret scr (SConstCase t exp)
