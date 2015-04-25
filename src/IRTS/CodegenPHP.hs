@@ -19,11 +19,13 @@ start = phpname (sMN 0 "runMain") ++ "();"
 
 helpers = errCode ++ "\n" ++ 
           doEcho ++ "\n" ++
+          doRead ++ "\n" ++
           mkStr ++ "\n" ++
           doAppend ++ "\n"
 
 errCode = "function error($str) { echo \"$str\\n\"; exit(0); }"
-doEcho = "function idris_writeStr($str) { echo \"$str\\n\"; }"
+doEcho = "function idris_writeStr($str) { echo \"$str\"; }"
+doRead = "function idris_readStr() { return fgets(STDIN); }"
 doAppend = "function idris_append($l, $r) { return ($l . $r); }"
 mkStr = "function mkStr($l) { return array($l); }"
 
@@ -88,7 +90,7 @@ cgBody ret (SChkCase e alts)
 cgBody ret (SConst c) = ret $ cgConst c
 cgBody ret (SOp op args) = ret $ cgOp op (map cgVar args)
 cgBody ret SNothing = ret "0"
-cgBody ret (SError x) = ret $ "error( " ++ x ++ ")"
+cgBody ret (SError x) = ret $ "error( " ++ show x ++ ")"
 cgBody ret _ = ret $ "error(\"NOT IMPLEMENTED!!!!\")"
 
 cgAlt :: (String -> String) -> String -> SAlt -> String
@@ -108,6 +110,7 @@ cgVar (Glob n) = var n
 
 cgConst :: Const -> String
 cgConst (I i) = show i
+cgConst (Ch i) = show i
 cgConst (BI i) = show i
 cgConst (Str s) = show s
 cgConst TheWorld = "0"
@@ -131,11 +134,16 @@ cgOp (LSGt (ATInt _)) [l, r]
      = "(" ++ l ++ " > " ++ r ++ ")"
 cgOp (LSGe (ATInt _)) [l, r] 
      = "(" ++ l ++ " >= " ++ r ++ ")"
+cgOp LStrEq [l,r] = "(" ++ l ++ " == " ++ r ++ ")"
 cgOp (LIntStr _) [x] = x
+cgOp (LChInt _) [x] = x
+cgOp (LIntCh _) [x] = x
 cgOp (LSExt _ _) [x] = x
 cgOp (LTrunc _ _) [x] = x
 cgOp LWriteStr [_,str] = "idris_writeStr(" ++ str ++ ")"
+cgOp LReadStr [_] = "idris_readStr()"
 cgOp LStrConcat [l,r] = "idris_append(" ++ l ++ ", " ++ r ++ ")"
+cgOp LStrCons [l,r] = "idris_append(" ++ l ++ ", " ++ r ++ ")"
 cgOp op exps = "error(\"OPERATOR " ++ show op ++ " NOT IMPLEMENTED!!!!\")"
    -- error("Operator " ++ show op ++ " not implemented")
 
