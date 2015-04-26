@@ -110,7 +110,7 @@ cgVar (Glob n) = var n
 
 cgConst :: Const -> String
 cgConst (I i) = show i
-cgConst (Ch i) = show i
+cgConst (Ch i) = show (ord i) -- Treat Char as ints, because PHP treats them as Strings...
 cgConst (BI i) = show i
 cgConst (Str s) = show s
 cgConst TheWorld = "0"
@@ -135,7 +135,13 @@ cgOp (LSGt (ATInt _)) [l, r]
 cgOp (LSGe (ATInt _)) [l, r] 
      = "(" ++ l ++ " >= " ++ r ++ ")"
 cgOp LStrEq [l,r] = "(" ++ l ++ " == " ++ r ++ ")"
-cgOp (LIntStr _) [x] = x
+cgOp LStrRev [x] = "strrev(" ++ x ++ ")"
+cgOp LStrLen [x] = "strlen(utf8_decode(" ++ x ++ "))"
+cgOp LStrHead [x] = "ord(" ++ x ++ "[0])"
+cgOp LStrIndex [x, y] = "ord(" ++ x ++ "[" ++ y ++ "])"
+cgOp LStrTail [x] = "substr(" ++ x ++ ", 1)"
+
+cgOp (LIntStr _) [x] = "\"" ++ x ++ "\""
 cgOp (LChInt _) [x] = x
 cgOp (LIntCh _) [x] = x
 cgOp (LSExt _ _) [x] = x
@@ -143,7 +149,7 @@ cgOp (LTrunc _ _) [x] = x
 cgOp LWriteStr [_,str] = "idris_writeStr(" ++ str ++ ")"
 cgOp LReadStr [_] = "idris_readStr()"
 cgOp LStrConcat [l,r] = "idris_append(" ++ l ++ ", " ++ r ++ ")"
-cgOp LStrCons [l,r] = "idris_append(" ++ l ++ ", " ++ r ++ ")"
+cgOp LStrCons [l,r] = "idris_append(chr(" ++ l ++ "), " ++ r ++ ")"
 cgOp op exps = "error(\"OPERATOR " ++ show op ++ " NOT IMPLEMENTED!!!!\")"
    -- error("Operator " ++ show op ++ " not implemented")
 
