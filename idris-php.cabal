@@ -9,7 +9,7 @@ Cabal-Version:  >= 1.8
 Extra-source-files:
 		phprts/*.php
 
-Executable idris-php
+Executable idris-codegen-php
   Main-is:        Main.hs
   hs-source-dirs: src
 

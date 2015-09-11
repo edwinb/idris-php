@@ -24,6 +24,7 @@ getOpts = do xs <- getArgs
              return $ process (Opts [] "a.php") xs
   where
     process opts ("-o":o:xs) = process (opts { output = o }) xs
+    process opts ("--yes-really":xs) = process opts xs -- GRRR
     process opts (x:xs) = process (opts { inputs = x:inputs opts }) xs
     process opts [] = opts
 
