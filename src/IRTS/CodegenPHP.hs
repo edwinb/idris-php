@@ -150,6 +150,7 @@ cgOp LWriteStr [_,str] = "idris_writeStr(" ++ str ++ ")"
 cgOp LReadStr [_] = "idris_readStr()"
 cgOp LStrConcat [l,r] = "idris_append(" ++ l ++ ", " ++ r ++ ")"
 cgOp LStrCons [l,r] = "idris_append(chr(" ++ l ++ "), " ++ r ++ ")"
+cgOp (LStrInt _) [x] = x
 cgOp op exps = "error(\"OPERATOR " ++ show op ++ " NOT IMPLEMENTED!!!!\")"
    -- error("Operator " ++ show op ++ " not implemented")
 
