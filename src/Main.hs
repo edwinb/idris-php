@@ -32,7 +32,7 @@ c_main :: Opts -> Idris ()
 c_main opts = do elabPrims
                  loadInputs (inputs opts) Nothing
                  mainProg <- elabMain
-                 ir <- compile (Via "php") (output opts) (Just mainProg)
+                 ir <- compile (Via IBCFormat "php") (output opts) (Just mainProg)
                  runIO $ codegenPHP ir
 
 main :: IO ()
