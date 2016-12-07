@@ -1,7 +1,7 @@
 Name:           idris-php
 Version:        0.0.0.1
 License:        BSD3
-License-file:   CRAPL-LICENSE.txt
+License-file:   LICENSE
 Author:         Edwin Brady
 Maintainer:	Edwin Brady <ecb10@st-andrews.ac.uk>
 Build-Type:	Simple
